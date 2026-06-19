@@ -1,0 +1,16 @@
+{
+  "name": "tool-beats",
+  "version": "1.0.0",
+  "main": "src/run-month.js",
+  "scripts": {
+    "month": "node src/run-month.js",
+    "history": "node src/run-history.js",
+    "simulate": "node src/simulate-period.js"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.4.5",
+    "mssql": "^11.0.1",
+    "mysql2": "^3.11.3"
+  }
+}

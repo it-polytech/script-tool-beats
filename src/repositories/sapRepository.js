@@ -134,10 +134,11 @@ async function getToolState(toolCode) {
 
 async function updateToolBatNow(toolCode, batNow) {
   const pool = await getSapPool();
+  const batNowValue = String(Math.ceil(Number(batNow || 0)));
 
   await pool.request()
     .input('ToolCode', sql.NVarChar, toolCode)
-    .input('BatNow', sql.Decimal(19, 6), batNow)
+    .input('BatNow', sql.NVarChar, batNowValue)
     .query(`
       UPDATE [@POL_TOOL_HEADER]
       SET U_POL_BAT_NOW = @BatNow

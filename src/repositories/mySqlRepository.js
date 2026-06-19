@@ -28,8 +28,22 @@ async function deleteToolBeatsByDate(date) {
   );
 }
 
+async function getTotalBeatsByTool() {
+  const [rows] = await appPool.query(`
+    SELECT
+        tool_id,
+        SUM(beats) AS total_beats
+    FROM tool_beats_month
+    GROUP BY tool_id
+    HAVING SUM(beats) > 0
+  `);
+
+  return rows;
+}
+
 module.exports = {
   getToolBeatsByDate,
   insertToolBeatsMonth,
-  deleteToolBeatsByDate
+  deleteToolBeatsByDate,
+  getTotalBeatsByTool
 };

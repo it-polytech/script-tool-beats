@@ -5,7 +5,8 @@
   "scripts": {
     "month": "node src/run-month.js",
     "history": "node src/run-history.js",
-    "simulate": "node src/simulate-period.js"
+    "simulate": "node src/simulate-period.js",
+    "sync-sap": "node src/sync-sap.js"
   },
   "dependencies": {
     "dayjs": "^1.11.13",

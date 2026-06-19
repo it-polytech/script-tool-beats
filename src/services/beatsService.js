@@ -4,14 +4,14 @@ const {
   getToolItemsForBeats,
   getAllBomLinks,
   getInvoiceQtyForBeats,
-  getToolState,
   updateToolBatNow
 } = require('../repositories/sapRepository');
 
 const {
   getToolBeatsByDate,
   insertToolBeatsMonth,
-  deleteToolBeatsByDate
+  deleteToolBeatsByDate,
+  getTotalBeatsByTool
 } = require('../repositories/mySqlRepository');
 
 const {
@@ -151,7 +151,7 @@ function getPreviousMonthPeriod(date = null) {
   };
 }
 
-async function runMonth({ db = false, overwrite = false, date = null }) {
+async function runMonth({ db = false, overwrite = false, date = null, mysqlOnly = false }) {
   const { startDate, endDate } = getPreviousMonthPeriod(date);
 
   const alreadyDone = await getToolBeatsByDate(startDate);
@@ -171,43 +171,12 @@ async function runMonth({ db = false, overwrite = false, date = null }) {
 
   const rows = await calculateToolBeatsForPeriod(startDate, endDate);
 
-  for (const row of rows) {
-    const beats = Number(row.beats || 0);
+  if (db) {
+    await persistMonthlyRows(startDate, rows);
 
-    if (beats <= 0) {
-      continue;
+    if (!mysqlOnly) {
+      await syncSapBatNowFromMySql();
     }
-
-    if (!db) {
-      continue;
-    }
-
-    await insertToolBeatsMonth({
-      tool_id: row.tool_code,
-      beats,
-      date: startDate
-    });
-
-    const toolState = await getToolState(row.tool_code);
-
-    if (!toolState) {
-      continue;
-    }
-
-    const batNow = Number(toolState.U_POL_BAT_NOW || 0);
-    const batCounter = Number(toolState.U_POL_BAT_COUNTER || 0);
-
-    let nextBatNow = batNow + beats;
-
-    if (toolState.U_POL_BAT_COUNTER_DATE && batCounter > 0) {
-      const counterDate = dayjs(toolState.U_POL_BAT_COUNTER_DATE).format('YYYY-MM-DD');
-
-      if (counterDate > startDate && counterDate < endDate) {
-        nextBatNow = batCounter;
-      }
-    }
-
-    await updateToolBatNow(row.tool_code, Math.ceil(nextBatNow));
   }
 
   return {
@@ -218,7 +187,7 @@ async function runMonth({ db = false, overwrite = false, date = null }) {
   };
 }
 
-async function runHistory({ db = false, from = '2012-01-01', to = null, overwrite = false }) {
+async function runHistory({ db = false, from = '2012-01-01', to = null, overwrite = false, mysqlOnly = false }) {
   let month = dayjs(from).startOf('month');
 
   const lastMonth = to
@@ -251,19 +220,7 @@ async function runHistory({ db = false, from = '2012-01-01', to = null, overwrit
     const rows = await calculateToolBeatsForPeriod(startDate, endDate);
 
     if (db) {
-      for (const row of rows) {
-        const beats = Number(row.beats || 0);
-
-        if (beats <= 0) {
-          continue;
-        }
-
-        await insertToolBeatsMonth({
-          tool_id: row.tool_code,
-          beats,
-          date: startDate
-        });
-      }
+      await persistMonthlyRows(startDate, rows);
     }
 
     summary.push({
@@ -275,11 +232,47 @@ async function runHistory({ db = false, from = '2012-01-01', to = null, overwrit
     month = month.add(1, 'month');
   }
 
+  if (db && !mysqlOnly) {
+    await syncSapBatNowFromMySql();
+  }
+
   return summary;
+}
+
+async function persistMonthlyRows(startDate, rows) {
+  for (const row of rows) {
+    const beats = Number(row.beats || 0);
+
+    if (beats <= 0) {
+      continue;
+    }
+
+    await insertToolBeatsMonth({
+      tool_id: row.tool_code,
+      beats,
+      date: startDate
+    });
+  }
+}
+
+async function syncSapBatNowFromMySql() {
+  const totals = await getTotalBeatsByTool();
+
+  for (const row of totals) {
+    const toolCode = String(row.tool_id || '').trim();
+    const totalBeats = Math.ceil(Number(row.total_beats || 0));
+
+    if (!toolCode || totalBeats <= 0) {
+      continue;
+    }
+
+    await updateToolBatNow(toolCode, totalBeats);
+  }
 }
 
 module.exports = {
   calculateToolBeatsForPeriod,
   runMonth,
-  runHistory
+  runHistory,
+  syncSapBatNowFromMySql
 };

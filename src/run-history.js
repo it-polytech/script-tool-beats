@@ -22,6 +22,7 @@ function hasFlag(name) {
 async function main() {
   const write = hasFlag('write');
   const overwrite = hasFlag('overwrite');
+  const mysqlOnly = hasFlag('mysql-only');
 
   const from = getArg('from', '2012-01-01');
   const to = getArg('to', null);
@@ -31,12 +32,14 @@ async function main() {
   console.log('Da:', from);
   console.log('A:', to || 'mese precedente');
   console.log('Overwrite:', overwrite ? 'SI' : 'NO');
+  console.log('Solo MySQL:', mysqlOnly ? 'SI' : 'NO');
 
   const result = await runHistory({
     db: write,
     from,
     to,
-    overwrite
+    overwrite,
+    mysqlOnly
   });
 
   console.log(JSON.stringify(result, null, 2));

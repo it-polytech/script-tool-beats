@@ -15,8 +15,9 @@ Per farlo:
 3. legge le quantità del periodo;
 4. attribuisce i volumi ai tool;
 5. calcola le battute;
-6. opzionalmente salva il risultato su MySQL;
-7. opzionalmente aggiorna in SAP il campo del contatore attuale.
+6. opzionalmente salva il risultato mensile su MySQL;
+7. opzionalmente ricalcola il cumulato totale leggendo MySQL;
+8. opzionalmente aggiorna in SAP il campo del contatore attuale usando il cumulato MySQL.
 
 ## Stack e dipendenze
 
@@ -42,6 +43,7 @@ src/
   run-month.js          Esecuzione mese precedente
   run-history.js        Esecuzione storica multi-mese
   simulate-period.js    Simulazione su intervallo arbitrario
+  sync-sap.js           Allineamento SAP dal cumulato MySQL
 ```
 
 ## Configurazione
@@ -186,9 +188,22 @@ Quindi:
 - viene applicata la percentuale extra;
 - il risultato è sempre arrotondato per eccesso.
 
+### 7. Persistenza e aggiornamento SAP
+
+In modalità scrittura il flusso è questo:
+
+1. calcola le battute del mese;
+2. salva una riga per tool nella tabella MySQL `tool_beats_month`;
+3. somma tutte le registrazioni presenti in MySQL per ogni tool;
+4. aggiorna `U_POL_BAT_NOW` in SAP con il totale cumulato trovato in MySQL.
+
+Il contatore SAP quindi non viene più usato come base di partenza per il nuovo calcolo.
+
+Se viene usato il flag `--mysql-only`, il flusso si ferma dopo la scrittura su MySQL e non aggiorna SAP.
+
 ## Modalità operative
 
-Il progetto supporta tre modalità.
+Il progetto supporta quattro modalità.
 
 ### 1. Simulazione di un periodo arbitrario
 
@@ -241,6 +256,7 @@ Se la data di riferimento è `2026-06-18`, il periodo calcolato sarà:
 Flag supportati:
 
 - `--write` abilita la scrittura su MySQL e l'aggiornamento SAP
+- `--mysql-only` insieme a `--write` scrive solo su MySQL e non aggiorna SAP
 - `--overwrite` cancella i dati del mese già presenti prima di reinserirli
 - `--date=YYYY-MM-DD` imposta la data di riferimento per determinare il mese precedente
 
@@ -267,9 +283,24 @@ Parametri:
 - `--from=YYYY-MM-DD`
 - `--to=YYYY-MM-DD`
 - `--write`
+- `--mysql-only`
 - `--overwrite`
 
 Se `--to` non viene passato, il programma arriva fino al mese precedente rispetto alla data corrente.
+
+### 4. Sincronizzazione SAP dal cumulato MySQL
+
+File: `src/sync-sap.js`
+
+Legge il cumulato per tool dalla tabella MySQL `tool_beats_month` e aggiorna `U_POL_BAT_NOW` in SAP.
+
+Non ricalcola le battute e non scrive nuove righe su MySQL.
+
+Esempio:
+
+```bash
+npm run sync-sap
+```
 
 ## Cosa viene scritto su MySQL
 
@@ -296,17 +327,16 @@ Nel calcolo mensile e storico:
 
 ## Cosa viene aggiornato in SAP
 
-Solo in modalità `--write` del comando mensile, dopo l'inserimento su MySQL:
+In modalità `--write`, se non è attivo `--mysql-only`, dopo l'inserimento su MySQL:
 
-- legge lo stato del tool in `[@POL_TOOL_HEADER]`
+- legge il cumulato per tool dalla tabella MySQL `tool_beats_month`
 - aggiorna `U_POL_BAT_NOW`
 
 La logica è:
 
-- normalmente `U_POL_BAT_NOW = valore_attuale + beats_del_mese`
-- se esiste `U_POL_BAT_COUNTER_DATE` e la data del contatore cade dentro il periodo analizzato, allora il nuovo valore parte da `U_POL_BAT_COUNTER`
+- `U_POL_BAT_NOW = somma(beats)` di tutte le righe MySQL per quel tool
 
-In pratica il programma gestisce il caso in cui durante il mese sia stato eseguito un reset o un riallineamento del contatore.
+In pratica SAP viene riallineato al cumulato presente in MySQL, che diventa la fonte per il contatore corrente.
 
 ## Output dei comandi
 
@@ -384,6 +414,12 @@ npm run month
 npm run month -- --write
 ```
 
+### Calcolare il mese precedente e scrivere solo su MySQL
+
+```bash
+npm run month -- --write --mysql-only
+```
+
 ### Forzare il ricalcolo di un mese già presente
 
 ```bash
@@ -394,6 +430,18 @@ npm run month -- --write --overwrite --date=2026-06-18
 
 ```bash
 npm run history -- --from=2024-01-01 --to=2024-12-01 --write
+```
+
+### Lanciare uno storico scrivendo solo su MySQL
+
+```bash
+npm run history -- --from=2024-01-01 --write --mysql-only
+```
+
+### Aggiornare solo SAP dal cumulato MySQL
+
+```bash
+npm run sync-sap
 ```
 
 ## Note importanti
@@ -453,4 +501,3 @@ Se le connessioni e le query sono corrette, il programma stamperà il JSON del m
 - aggiungere una validazione più robusta degli argomenti CLI
 - gestire batch insert su MySQL
 - documentare formalmente il significato funzionale dei campi `U_POL_*`
-
